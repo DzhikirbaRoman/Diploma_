@@ -686,7 +686,7 @@ View(pwl2)
 # Save the filtered background gene set
 filename <- 'GO_BP.RDS'
 saveRDS(pwl2, filename)
-
+ 
 ##### If you want to parse several .gmt files at once, you can use a loop:
 #
 #gmt_files <- list.files(path = bg_path, pattern = '.gmt', full.names = TRUE)
