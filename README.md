@@ -1,2 +1,2 @@
 # Diploma_
-My new repository that linked to R-Studio
+  My new repository that contains coding part of my diploma project
