@@ -22,10 +22,6 @@ PlotsFolder <- file.path(working_dir,"Plots")
 ## Data reading - Expression matrix and metaData 
 
 ```{r Data reading}
-# expression matrix
-sub_exprs = read.table(file.path(DataFilesFolder,"sub_exprs.tsv"), sep="\t")
-head(sub_exprs)
-
 # Meta Data
 sub_pdata = read.table(file.path(DataFilesFolder,"sub_sub_pdata.tsv"), sep="\t", header = TRUE)
 head(sub_pdata)
@@ -34,6 +30,26 @@ table(sub_pdata[,c( "trim_term")])
 
 #as.factor(sub_pdata$trim_term)
 #sub_pdata$trim_term
+
+
+# expression matrix
+sub_exprs = read.table(file.path(DataFilesFolder,"sub_exprs.tsv"), sep="\t")
+head(sub_exprs)
+# Here I substitute colnames with trimmed versions of Sample names + Gestational.Age 
+colnames(sub_exprs)
+
+# If True, I can substitite rownames for sub_expr, that will contain trimmed Sample names + Gestational.Age
+#sub_pdata$arraydatafile_exprscolumnnames == colnames(sub_exprs)
+
+colnames(sub_exprs)
+colnames(sub_exprs) <- paste0(substr(sub_pdata$arraydatafile_exprscolumnnames,1,10),"_",
+                                  sub_pdata$Gestational.Age.Appr)
+colnames(sub_exprs)
+
+sub_pdata$arraydatafile_exprscolumnnames <- paste0(substr(sub_pdata$arraydatafile_exprscolumnnames,1,10),"_",
+                                  sub_pdata$Gestational.Age.Appr)
+
+#sub_pdata$arraydatafile_exprscolumnnames
 ```
 ## Building heatmap using pheatmap
 * Unsupervised analysis is a good way to get an understanding of the sources of variation in the data. It can also identify potential outlier samples.
@@ -44,23 +60,25 @@ library(pheatmap)
 library(tidyverse)
 library(dplyr)
 ### pheatmap for both trimestrs
-# here i want to create df that contains trims for sample names to put in as annotation in pheatmap()
+# here i want to create df tsampleinfo hat contains trims for sample names to put in as annotation in pheatmap()
 sampleinfo <- dplyr::select(sub_pdata, trim_term, Combined.Fetus.Sex)
 #class(sampleinfo)
-rownames(sampleinfo) <- sub_pdata$arraydatafile_exprscolumnnames
+# Here I add rownames for sampleinfo, that contain trimmed Sample names + Gestational.Age
+rownames(sampleinfo) <- paste0(substr(sub_pdata$arraydatafile_exprscolumnnames,1,10),"_",
+                                  sub_pdata$Gestational.Age.Appr)
 View(sampleinfo)
 # creation corMatrix for samples
 corMatrix <- cor(sub_exprs,use="c")
-pheatmap(corMatrix, width = 300, height = 900,annotation_col = sampleinfo)     
+pheatmap(corMatrix, width = 300, height = 900, annotation_col = sampleinfo)     
 
 # first trim
-names_1trim <- sub_pdata[sub_pdata$trim_term == "First Trimester",]$arraydatafile_exprscolumnnames
+names_1trim <- rownames(sampleinfo[sampleinfo$trim_term == "First Trimester",])
 names_1trim
 corMatrix_1trim <- cor(sub_exprs[,names_1trim],use="c")
 pheatmap(corMatrix_1trim, width = 300, height = 900 )     
 
 # second trim
-names_2trim <- sub_pdata[sub_pdata$trim_term == "Second Trimester",]$arraydatafile_exprscolumnnames
+names_2trim <- rownames(sampleinfo[sampleinfo$trim_term == "Second Trimester",])
 names_2trim
 corMatrix_2trim <- cor(sub_exprs[,names_2trim],use="c")
 pheatmap(corMatrix_2trim, width = 300, height = 900 )     
@@ -116,6 +134,7 @@ diff_table
 ```{r Obtaining Annotation}
 library(org.Hs.eg.db)
 #keys(org.Hs.eg.db)
+#keytypes(org.Hs.eg.db)
 #View(sub_exprs)
 
 ### Annotation of genes for diff_table
@@ -140,6 +159,8 @@ NA %in% sel2$ENTREZID
 # Checking whether we have NA names of genes in sub_exprs
 NA %in% rownames(sub_exprs)
 
+sel2
+sub_exprs
 # Filtering out Genes that were not annotated in Expression Matrix(sub_exprs)
 sub_exprs <- sub_exprs[sel2$SYMBOL,]
 #View(sub_exprs)
@@ -543,16 +564,78 @@ heatmap <- HeatmapAnnotation(
   )
 heatmap
 ```
+## Volcano Plot
+```{r Volcano Plot}
+#list.files(DataFilesFolder) 
+
+de_genes <- read_excel(file.path(DataFilesFolder,"difexp_1-2.xlsx"))
+# Remove the first column from the data frame
+de_genes <- de_genes[-1]
+library(ggrepel)
+library(magrittr)
+# View(de_genes)
+# Create new variable for all genes to define whether they are significant or not, and make top 20 DOWN and UP regulated
+de_genes$diffexpressed <- "Not Significant"
+# Define what genes are UP-regulated
+de_genes$diffexpressed[de_genes$logFC > 1 & de_genes$adj.P.Val < 0.05] <- "Up-regulated"
+# Define what genes are DOWN-regulated
+de_genes$diffexpressed[de_genes$logFC < -1 & de_genes$adj.P.Val < 0.05] <- "Down-regulated"
+# Define Colors for different group of genes
+my_colors <- c("black","blue","red","green","purple")
+names(my_colors) <- c("Not Significant","Down-regulated","Up-regulated","Down-reg_top20","Up-reg_top20")
+
+# create new variable to point Top 20 Pp and Down regulated DEGs
+de_genes$delabel<- NA
+
+# Creating new Pi-value for Volcano Plot that takes into account -log(adj.P.Val)*LogFC in order to arrange significant DEGs by this Value
+de_genes$pi_value <- abs(-log10(de_genes$adj.P.Val)*de_genes$logFC)
+#View(de_genes)
+
+# Filter out all not significant genes and arrange them in ascending order
+filtered_genes <- de_genes %>%
+  filter(diffexpressed %in% c("Up-regulated","Down-regulated")) %>%
+  arrange(desc(pi_value))
+View(filtered_genes)
+# Step of obtaining threshold for now Pi_value to indicate TOP 20 DEGs
+threshold <- filtered_genes %>% slice(20) %>% pull(pi_value)
+View(filtered_genes)
+threshold
+# Giving new values for diffexpressed variable for TOP 20 UP and Down regulated genes, that fit the threshold value
+de_genes$diffexpressed[de_genes$pi_value >= threshold & de_genes$diffexpressed %in% c("Up-regulated")] <- "Up-reg_top20"
+de_genes$diffexpressed[de_genes$pi_value >= threshold & de_genes$diffexpressed %in% c("Down-regulated")] <- "Down-reg_top20"
+# Order again Genes in de_genes in acsending order by Pi_value
+de_genes <- de_genes[order(de_genes$pi_value, decreasing = TRUE),]
+de_genes
+
+# Giving Names for TOP 20 Up and Down reg genes
+de_genes$delabel[de_genes$diffexpressed %in% c("Up-reg_top20","Down-reg_top20")] <- de_genes$SYMBOL
+
+View(de_genes)
+
+plot1 <- ggplot(data = de_genes, aes(x = logFC, y = -log10(adj.P.Val), col = diffexpressed, label = delabel)) +
+  geom_point() +
+  theme_minimal() +
+  geom_text_repel() +
+  scale_color_manual(values = my_colors) +
+  geom_vline(xintercept = c(-0.072,0.072,1,-1),col="red",linetype = 2) +
+  geom_hline(yintercept = -log10(0.05246),col="red",linetype = 2) +
+  theme(text = element_text(size = 20)) 
+plot1
+
+# Save the Plot
+ggsave("Nice_Voclano_Plot.png",plot=plot1,width=10, height=8,path=PlotsFolder)
+
+PlotsFolder
+```
 
 ## Overrepresented analysis, ORA, Results
-
 
 ```{r ORA, + Results}
 
 ###
 #### Overrepresentation analysis ORA 
 #
-# Read in the data
+# Read in the data of difexp_1-2.xlsx (table of differential expression)
 df <- read_excel("difexp_1-2.xlsx", sheet = "Sheet1")
 #df <- read.csv(paste0(in_path, 'expression2.csv'), row.names = 1)
 
@@ -790,6 +873,176 @@ emapplot(enrichres2)
 # Upsetplot
 upsetplot(enrichres)
 
+
+```
+
+## GSEA , Gene Set Enrichment Analysis
+```{r}
+## 1. Read in data -----------------------------------------------------------
+#df <- read.table("1_2_DEGs.tsv", header = TRUE, sep = "\t")
+
+DEGs <- read_excel("difexp_1-2.xlsx", sheet = "Sheet1")
+#df <- read.csv(paste0(in_path, 'expression2.csv'), row.names = 1)
+# Remove the first column from the data frame
+DEGs <- DEGs[-1]
+#View(DEGs)
+
+head(DEGs)
+# Get all the genes in your dataset and assign them to my_genes 
+# THE SAME AS IN THE TUTORIAL SQUID
+df_1_4_7_8 <- DEGs[,c(1,4,7,8)]
+#my_genes <- df_2_4_7_8$SYMBOL
+
+# Download gene sets .gmt files
+#https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp
+# Copy the .gmt file to your folder, in my case, its 'PEA/Background_genes/'
+# Then read in the .gmt file
+gmt_file <- "BP_subset_GO_Hs.symbols.gmt"
+
+## 2. Prepare background genes -----------------------------------------------
+
+# Download gene sets .gmt files
+#https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp
+
+# For GSEA
+# Filter out the gmt files for KEGG, Reactome and GOBP
+my_genes <- df_1_4_7_8$SYMBOL
+bg_path <- "C:/Users/RTIntelektFBT/Desktop/Roman_Project/try_from_almostZERO"
+gmt_files <- list.files(path = bg_path,pattern = '.gmt', full.names = TRUE)
+gmt_files
+bg_genes <- prepare_gmt(gmt_files, my_genes, savefile = FALSE)
+#View(bg_genes)
+head(df_1_4_7_8)
+# Prepare your ranked list of genes
+rankings <- sign(df_1_4_7_8$logFC)*(-log10(df_1_4_7_8$P.Value)) # we will use the signed p values from spatial DGE as ranking
+names(rankings) <- df_1_4_7_8$SYMBOL # genes as names
+#View(rankings)
+rankings <- sort(rankings, decreasing = TRUE) # sort genes by ranking
+head(rankings)
+plot(rankings)
+
+###
+#max(rankings)
+#min(rankings)
+# Some genes have such low p values that the signed pval is +- inf, we need to change it to the maximum * constant to avoid problems with fgsea
+#max_ranking <- max(rankings[is.finite(rankings)])
+#min_ranking <- min(rankings[is.finite(rankings)])
+#rankings <- replace(rankings, rankings > max_ranking, max_ranking * 10)
+#rankings <- replace(rankings, rankings < min_ranking, min_ranking * 10)
+#rankings <- sort(rankings, decreasing = TRUE) # sort genes by ranking
+###
+
+ggplot(data.frame(gene_symbol = names(rankings)[1:50], ranks = rankings[1:50]), aes(gene_symbol, ranks)) + 
+  geom_point() +
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+## 4. Run GSEA ---------------------------------------------------------------
+# Easy peasy! Run fgsea with the pathways 
+GSEAres <- fgsea(pathways = bg_genes, # List of gene sets to check
+                 stats = rankings,
+                 scoreType = 'std', # in this case we have both pos and neg rankings. if only pos or neg, set to 'pos', 'neg'
+                 minSize = 10,
+                 maxSize = 500,
+                 nproc = 1) # for parallelisation
+
+head(GSEAres)
+View(GSEAres)
+GSEAres_ordered <- GSEAres[order(padj), ]
+View(GSEAres_ordered)
+
+## 6. Check results ------------------------------------------------------
+# Top 6 enriched pathways (ordered by p-val)
+head(GSEAres[order(pval), ])
+
+sum(GSEAres[, padj < 0.01])
+sum(GSEAres[, pval < 0.01])
+
+
+
+
+
+
+number_of_top_pathways_up = 10
+number_of_top_pathways_down = 10
+topPathwaysUp <- GSEAres[ES > 0][head(order(padj), n = number_of_top_pathways_up), pathway]
+topPathwaysDown <- GSEAres[ES < 0][head(order(padj), n = number_of_top_pathways_down), pathway]
+topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+
+#pdf(file = paste0(filename, '_gsea_top30pathways.pdf'), width = 20, height = 15)
+plotGseaTable(bg_genes[topPathways], stats = rankings, fgseaRes = GSEAres, gseaParam = 0.5)
+#dev.off()
+
+# Select only independent pathways, removing redundancies/similar pathways
+collapsedPathways <- collapsePathways(GSEAres[order(padj)][padj < 0.05], bg_genes, rankings)
+mainPathways <- GSEAres[pathway %in% collapsedPathways$mainPathways][order(-NES), pathway]
+#pdf(file = paste0('GSEA/Selected_pathways/', paste0(filename, background_genes, '_gsea_mainpathways.pdf')), width = 20, height = 15)
+plotGseaTable(bg_genes[mainPathways], rankings, GSEAres, gseaParam = 0.5)
+#dev.off()
+
+#If you’d like to export the tables, just uncomment the 2 lines above. You can also export to .png, or other formats:
+#png(file = paste0(filename, ‘_gsea_mainpathways.png’), width = 1500, height = 800)
+#plotGseaTable(bg_genes[mainPathways], rankings, GSEAres, gseaParam = 0.5)
+
+
+
+
+
+# plot the most significantly enriched pathway
+plotEnrichment(bg_genes[[head(GSEAres[order(padj), ], 1)$pathway]],
+               rankings) + 
+  labs(title = head(GSEAres[order(padj), ], 1)$pathway)
+
+
+bg_genes[[head(GSEAres[order(padj), ], 1)$pathway]]
+
+#View(GSEAres_ordered)
+#head(GSEAres_ordered,1)
+#head(GSEAres[order(padj), ], 2)$pathway
+#GSEAres_ordered[2,]
+
+bg_genes[[GSEAres_ordered[2,]$pathway]]
+View(bg_genes)
+# plot the 2 most significantly enriched pathway
+plotEnrichment(bg_genes[[GSEAres_ordered[2,]$pathway]],
+               rankings) + 
+  labs(title = GSEAres_ordered[2,]$pathway)
+
+# plot the 2 most significantly enriched pathway
+
+plotEnrichment(bg_genes[[GSEAres_ordered[2,]$pathway]],
+               rankings) + 
+  labs(title = GSEAres_ordered[2,]$pathway)
+
+plotEnrichment(bg_genes[[GSEAres_ordered[142,]$pathway]],
+               rankings) + 
+  labs(title = GSEAres_ordered[142,]$pathway)
+
+
+bg_genes[[GSEAres_ordered[1,]$pathway]]
+GSEAres_ordered[1,]$pathway
+bg_genes[1]
+
+class(bg_genes)
+bg_genes[[1]]
+
+GSEAres_ordered$pathway[1:5]
+
+GSEAres_ordered[1:5]$pathway
+
+plotGseaTable(
+  pathways = bg_genes[GSEAres_ordered$pathway[1:5]],
+  stats = rankings,
+  fgseaRes = GSEAres_ordered,
+  gseaParam = 1,
+  colwidths = c(5, 3, 0.8, 1.2, 1.2),
+  pathwayLabelStyle = NULL,
+  headerLabelStyle = NULL,
+  valueStyle = NULL,
+  axisLabelStyle = NULL,
+  render = NULL
+)
 
 ```
 
