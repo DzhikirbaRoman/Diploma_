@@ -18,6 +18,7 @@ working_dir <- "C:/Users/RTIntelektFBT/Desktop/Roman_Project/Diploma_"
 setwd(working_dir)
 DataFilesFolder <- file.path(working_dir,"Data_Files")
 PlotsFolder <- file.path(working_dir,"Plots")
+
 ```
 ## Data reading - Expression matrix and metaData 
 
@@ -60,30 +61,44 @@ The function cor() can calculate the correlation (on scale 0 - 1) in a pairwise 
 library(pheatmap)
 library(tidyverse)
 library(dplyr)
+
+summary(sub_exprs)
+# exprs_log2 <- log2(sub_exprs)
+boxplot(sub_exprs,outline=FALSE,las = 2, ) # to make X labes vertical I have to write las = 2
+
 ### pheatmap for both trimestrs
 # here i want to create df tsampleinfo hat contains trims for sample names to put in as annotation in pheatmap()
 sampleinfo <- dplyr::select(sub_pdata, trim_term, Combined.Fetus.Sex)
 #class(sampleinfo)
 # Here I add rownames for sampleinfo, that contain trimmed Sample names + Gestational.Age
-rownames(sampleinfo) <- paste0(substr(sub_pdata$arraydatafile_exprscolumnnames,1,10),"_",
-                                  sub_pdata$Gestational.Age.Appr)
+rownames(sampleinfo) <- sub_pdata$arraydatafile_exprscolumnnames
+  
 View(sampleinfo)
+#rownames(corMatrix) == rownames(sampleinfo)
 # creation corMatrix for samples
+# https://sbc.shef.ac.uk/geo_tutorial/tutorial.nb.html#Sample_clustering_and_Principal_Components_Analysis 
+## argument use="c" stops an error if there are any missing data points
 corMatrix <- cor(sub_exprs,use="c")
-pheatmap(corMatrix, width = 300, height = 900, annotation_col = sampleinfo)     
+cor_pheatmap_2_1_trims <- pheatmap(corMatrix, width = 300, height = 900, annotation_col = sampleinfo)     
+cor_pheatmap_2_1_trims
+ggsave(file = file.path(PlotsFolder,"cor_pheatmap_2_1_trims.svg"), plot = cor_pheatmap_2_1_trims, width=10, height=8)
 
 # first trim
 names_1trim <- rownames(sampleinfo[sampleinfo$trim_term == "First Trimester",])
 names_1trim
 
-corMatrix_1trim <- cor(sub_exprs[,names_1trim],use="c")
-pheatmap(corMatrix_1trim, width = 300, height = 900 )     
+corMatrix_1trim <- cor(sub_exprs[,colnames(sub_exprs) %in% names_1trim],use="c")
+cor_pheatmap_1_trim <- pheatmap(corMatrix_1trim, width = 300, height = 900, annotation_col = sampleinfo)   
+cor_pheatmap_1_trim
+ggsave(file = file.path(PlotsFolder,"cor_pheatmap_1_trim.svg"), plot = cor_pheatmap_1_trim, width=10, height=8)
 
 # second trim
 names_2trim <- rownames(sampleinfo[sampleinfo$trim_term == "Second Trimester",])
 names_2trim
-corMatrix_2trim <- cor(sub_exprs[,names_2trim],use="c")
-pheatmap(corMatrix_2trim, width = 300, height = 900 )     
+corMatrix_2trim <- cor(sub_exprs[,colnames(sub_exprs) %in% names_2trim],use="c")
+cor_pheatmap_2_trim <- pheatmap(corMatrix_2trim, width = 300, height = 900 , annotation_col = sampleinfo)   
+cor_pheatmap_2_trim
+ggsave(file = file.path(PlotsFolder,"cor_pheatmap_2_trim.svg"), plot = cor_pheatmap_2_trim, width=10, height=8)
 
 ```
 
@@ -136,7 +151,7 @@ diff_table
 ```{r Obtaining Annotation}
 library(org.Hs.eg.db)
 #keys(org.Hs.eg.db)
-#keytypes(org.Hs.eg.db)
+keytypes(org.Hs.eg.db)
 #View(sub_exprs)
 
 ### Annotation of genes for diff_table
@@ -303,22 +318,59 @@ DEGs
 DEGs <- DEGs[order(DEGs$logFC, decreasing = TRUE),]
 
 ```
-
+file:///C:/Users/RTIntelektFBT/Downloads/Telegram Desktop/heatmap_clustering_results_overview.R
 ## Principal Component Analysis
 
 ```{r PCA}
+library(factoextra)
+library(gridExtra)
 
 ## PCA
 pca <- prcomp(
   t(expression), # transpose our data frame to obtain PC scores for samples, not genes
-  scale = TRUE # we want the data scaled to have unit variance for each gene
+  #scale = TRUE # we want the data scaled to have unit variance for each gene. This means that each variable (gene in this case) will have a variance of 1 after scaling. 
+  # BUT I do need it, as it will corrupt result of PCA
 )
 #str(pca)
 #head(pca$x[, 1:5])
 pca_summary <- summary(pca)
-#pca_summary
+pca_summary
+
+#  fviz_eig - visualize the eigenvalues/variances of dimensions
+PCA_variance_PCs <- fviz_eig(pca, xlab = "Principal Components")
+PCA_variance_PCs
+ggsave(file = file.path(PlotsFolder,"PCA_variance_PCs.svg"), plot = PCA_variance_PCs, width=10, height=8)
+
+# fviz_cos2 function can be used to visualize the quality of representation (cos2) of rows/columns from the results of Principal Component Analysis (PCA),
+Main_genes_variance_PCs <- fviz_cos2(pca, choice = "var", axes = 1:2, top = 25)
+Main_genes_variance_PCs
+ggsave(file = file.path(PlotsFolder,"PCA_variance_PCs.svg"), plot = PCA_variance_PCs, width=10, height=8)
+
+# Plot regarging contribution of main genes to PC 1 and PC 2
+# fviz_contrib - this function can be used to visualize the contribution of rows/columns from the results of Principal Component Analysis 
+PC_1_genes_contr <- fviz_contrib(pca, choice = "var", axes = 1, top = 16)
+# ylab = "Contribution to variance, %"
+PC_1_genes_contr
+# Contributions of variables to PC2
+PC_2_genes_contr <- fviz_contrib(pca, choice = "var", axes = 2, top = 16)
+PC_2_genes_contr
+PC_1_2_genes_contr = grid.arrange(PC_1_genes_contr,PC_2_genes_contr, ncol=2, top='Contribution of the variables to the first two PCs')
+PC_1_2_genes_contr
+ggsave(file = file.path(PlotsFolder,"PC_1_2_genes_contr.svg"), plot = PC_1_2_genes_contr, width=10, height=8)
+
+
+# Principal component analysis (PCA) reduces the dimensionality of multivariate data, to two or three that can be visualized graphically with minimal loss of information.
+# fviz_pca_ind(): Graph of individuals
+PC_1_2_sample_contr <- fviz_pca_ind(pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("darkorchid4", "gold", "darkorange"),
+             repel = TRUE )
+PC_1_2_sample_contr
+ggsave(file = file.path(PlotsFolder,"PC_1_2_genes_contr.svg"), plot = PC_1_2_sample_contr, width=10, height=8)
+
+
 # Now access the importance information for the first 5 PCs
-pca_summary$importance[, 1:5]
+pca_summary$importance[, 1:8]
 
 # Make the first two PCs into a data frame for plotting with `ggplot2`
 pca_df <- data.frame(pca$x[, 1:2]) %>%
@@ -332,9 +384,6 @@ pca_df <- data.frame(pca$x[, 1:2]) %>%
 
 pca_df
 
-pca_df$Sample_Name <- paste0(substr(pca_df$arraydatafile_exprscolumnnames,1,9),"_",
-                                  pca_df$Gestational.Age.Appr)
-
 #rm(pca_df)
 #metadata$Gestational.Age.Appr
 #pca_summary$importance[2, 1:2]
@@ -342,7 +391,7 @@ pca_df$Sample_Name <- paste0(substr(pca_df$arraydatafile_exprscolumnnames,1,9),"
 PC1_2_pVar <- unname(c(pca_summary$importance[2, 1:2]))
 PC1_2_pVar
 # Make a scatterplot using `ggplot2` functionality
-pca_plot <- ggplot(
+pca_plot_gestAge_trim_fetus <- ggplot(
   pca_df,
   aes(
     x = PC1,
@@ -357,10 +406,12 @@ pca_plot <- ggplot(
   labs(x = paste("PC1 (", PC1_2_pVar[1]*100, "%)", sep = ""),
        y = paste("PC2 (", PC1_2_pVar[2]*100, "%)", sep = ""))
 # Print out the plot here
-pca_plot
+pca_plot_gestAge_trim_fetus
+ggsave(file = file.path(PlotsFolder,"pca_plot_gestAge_trim_fetus.svg"), plot = pca_plot_gestAge_trim_fetus, width=10, height=8)
 
-# plot with secondaryaccession instead of trim_term
-pca_plot <- ggplot(
+
+# plot with secondaryaccession instead of trim_term, and secondaryaccession for demonstrating datasets
+pca_plot_best_opt <- ggplot(
   pca_df,
   aes(
     x = PC1,
@@ -371,12 +422,13 @@ pca_plot <- ggplot(
 ) +
   geom_point(size = 4) + # Plot individual points to make a scatterplot
 #  geom_text(aes(label = Gestational.Age.Appr),vjust = -0.9 ) +
-  geom_text(aes(label = Sample_Name),vjust = 2 ) +
+  geom_text(aes(label = arraydatafile_exprscolumnnames),vjust = 2 ) +
   theme_classic() +# Format as a classic-looking plot with no gridlines
   labs(x = paste("PC1 (", PC1_2_pVar[1]*100, "%)", sep = ""),
        y = paste("PC2 (", PC1_2_pVar[2]*100, "%)", sep = ""))
 # Print out the plot here
-pca_plot
+pca_plot_best_opt
+ggsave(file = file.path(PlotsFolder,"pca_plot_best_opt.svg"), plot = pca_plot_best_opt, width=10, height=8)
 
 
 ```
@@ -393,10 +445,12 @@ library(dplyr)
 View(metadata)
 # creation of adjusted metadata, where I have additional variable Sample_Name(shortened version of arraydatafile_exprscolumnnames, + Gestational Age)
 metadata_adj <- metadata
-metadata_adj$Sample_Name <- paste0(substr(metadata$arraydatafile_exprscolumnnames,1,9),"_",
-                                  metadata$Gestational.Age.Appr)
+# I have already done this step, so I will just assign metadata not to change code below
+#metadata_adj$Sample_Name <- paste0(substr(metadata$arraydatafile_exprscolumnnames,1,9),"_",
+#                                 metadata$Gestational.Age.Appr)
 
 metadata_adj                                  
+
 # Assuming 'DEGs' is my original dataframe
 # Get the first 30 rows
 first_30 <- DEGs[1:30, ]
@@ -409,16 +463,19 @@ combined_df <- rbind(first_30, last_30)
 combined_df
 # Now 'combined_df' contains the first 30 and last 30 rows of 'DEGs'
 
-
 scaled_counts<- t(apply(expression, 1, scale)) #center and scale each column (Z-score) then transpose
 scaled_counts[combined_df$SYMBOL,]
 #View(scaled_counts)
 scaled_counts
-colnames(scaled_counts) <- metadata_adj$Sample_Name
+colnames(expression) == metadata_adj$arraydatafile_exprscolumnnames
+colnames(scaled_counts) <- metadata_adj$arraydatafile_exprscolumnnames
 
-  
-heatmap <- HeatmapAnnotation(
-  Condition = metadata$trim_term,  # Use the 'condition' column as annotation data
+
+# pdf(file=paste0("2-1_heatmap_top-DEGs_",GENE_COUNT,".pdf"))
+
+heatmap_top30_UP_DOWN <- HeatmapAnnotation(
+  Trimestr = metadata$trim_term,  # Use the 'Trimestr' column as annotation data
+  Sex = metadata$Combined.Fetus.Sex,
   col = list(Trimester = c("First Trimester" = "green", "Second Trimester" = "blue"))  # Define colors for annotation levels
   ) %>%
     Heatmap(
@@ -429,12 +486,16 @@ heatmap <- HeatmapAnnotation(
       # border = "black",
       cluster_columns = TRUE,
       top_annotation = .,
+      row_names_gp = gpar(fontsize = 7), # Text size for row names
       show_column_names = TRUE,
       show_row_names = TRUE, # in this case I used 1000 Top Up_regs and 1000 Donw_regs
       column_title = "First and second trimestr comparison"
     )
   
-heatmap
+heatmap_top30_UP_DOWN
+# draw(heatmap_top30_UP_DOWN)
+# svg(filename = file.path(PlotsFolder,"heatmap_top30_UP_DOWN.svg"), width=10, height=8)# 
+# ggsave(file = file.path(PlotsFolder,"heatmap_top30_UP_DOWN.png"), plot = heatmap_top30_UP_DOWN, width=10, height=8)
 
 
 
@@ -443,9 +504,9 @@ first_1000 <- DEGs[1:1000, ]
 last_1000 <- DEGs[(nrow(DEGs) - 999) : nrow(DEGs), ]
 combined_df1 <- rbind(first_1000, last_1000)
 
-
-heatmap <- HeatmapAnnotation(
-  Condition = metadata$trim_term,  # Use the 'condition' column as annotation data
+heatmap_top1000_UP_DOWN <- HeatmapAnnotation(
+Trimestr = metadata$trim_term,  # Use the 'Trimestr' column as annotation data
+  Sex = metadata$Combined.Fetus.Sex,
   col = list(Trimester = c("First Trimester" = "green", "Second Trimester" = "blue"))  # Define colors for annotation levels
   ) %>%
     Heatmap(
@@ -459,7 +520,7 @@ heatmap <- HeatmapAnnotation(
       show_row_names = FALSE, # in this case I used 1000 Top Up_regs and 1000 Donw_regs
       column_title = "First and second trimestr comparison"
     )
-heatmap
+heatmap_top1000_UP_DOWN
 
 scaled_counts
 
@@ -484,7 +545,9 @@ heatmap
 
 # Gestational.Age
 heatmap <- HeatmapAnnotation(
-  Condition = metadata_adj$Gestational.Age.Appr,  # Use the 'condition' column as annotation data
+  Gestational.Age = metadata_adj$Gestational.Age.Appr,  # Use the 'condition' column as annotation data
+  Trimestr = metadata$trim_term,  # Use the 'condition' column as annotation data
+  Sex = metadata$Combined.Fetus.Sex,
   col = list(Trimester = c("First Trimester" = "green", "Second Trimester" = "blue"))  # Define colors for annotation levels
 ) %>%
   Heatmap(
@@ -494,10 +557,11 @@ heatmap <- HeatmapAnnotation(
     name = "Z-score",
     cluster_columns = TRUE,
     top_annotation = .,
-    show_row_names = TRUE,
+    show_row_names = FALSE,
     show_column_names = TRUE,
   )
 heatmap
+
 ?Heatmap
 
 # boys heatmap
@@ -617,7 +681,7 @@ de_genes$delabel[de_genes$diffexpressed %in% c("Up-reg_top20","Down-reg_top20")]
 
 View(de_genes)
 
-plot1 <- ggplot(data = de_genes, aes(x = logFC, y = -log10(adj.P.Val), col = diffexpressed, label = delabel)) +
+VolcanoPlot_TOP20Degs <- ggplot(data = de_genes, aes(x = logFC, y = -log10(adj.P.Val), col = diffexpressed, label = delabel)) +
   geom_point() +
   theme_minimal() +
   geom_text_repel() +
@@ -625,10 +689,10 @@ plot1 <- ggplot(data = de_genes, aes(x = logFC, y = -log10(adj.P.Val), col = dif
   geom_vline(xintercept = c(-0.072,0.072,1,-1),col="red",linetype = 2) +
   geom_hline(yintercept = -log10(0.05246),col="red",linetype = 2) +
   theme(text = element_text(size = 20)) 
-plot1
+VolcanoPlot_TOP20Degs
 
 # Save the Plot
-ggsave("Nice_Voclano_Plot.png",plot=plot1,width=10, height=8,path=PlotsFolder)
+ggsave("VolcanoPlot_TOP20Degs.svg",plot=plot1,width=10, height=8,path=PlotsFolder)
 
 PlotsFolder
 ```
@@ -885,9 +949,200 @@ upsetplot(enrichres)
 
 
 ```
+## GSEA with clusterProfiler
+[Link for tutorial GSEA with clusterProfiler](https://learn.gencore.bio.nyu.edu/rna-seq-analysis/gene-set-enrichment-analysis/)
 
-## GSEA , Gene Set Enrichment Analysis
+```{r GSEA with clusterProfiler}
+####
+####### GSEA with clusterProfiler
+####
+library(clusterProfiler)
+
+## 1. Read in data
+#df <- read.table("1_2_DEGs.tsv", header = TRUE, sep = "\t")
+
+DEGs <- read_excel("difexp_1-2.xlsx", sheet = "Sheet1")
+#df <- read.csv(paste0(in_path, 'expression2.csv'), row.names = 1)
+# Remove the first column from the data frame
+DEGs <- DEGs[-1]
+#View(DEGs)
+
+head(DEGs)
+# Get all the genes in your dataset and assign them to my_genes 
+# THE SAME AS IN THE TUTORIAL SQUID
+df_1_4_7_8 <- DEGs[,c(1,4,7,8)]
+#my_genes <- df_2_4_7_8$SYMBOL
+
+# Prepare your ranked list of genes
+rankings <- sign(df_1_4_7_8$logFC)*(-log10(df_1_4_7_8$P.Value)) # we will use the signed p values from spatial DGE as ranking
+names(rankings) <- df_1_4_7_8$SYMBOL # genes as names
+#View(rankings)
+rankings <- sort(rankings, decreasing = TRUE) # sort genes by ranking
+head(rankings)
+plot(rankings)
+
+organism <- "org.Hs.eg.db"
+gse <- gseGO(geneList = rankings,  # rankings_gseGO
+             ont ="BP",  # ALL
+             keyType = "SYMBOL", 
+             nPerm = 10000, 
+             minGSSize = 10, 
+             maxGSSize = 1200, 
+             pvalueCutoff = 0.05, 
+             verbose = TRUE, 
+             OrgDb = organism, 
+             pAdjustMethod = "BH" # none or BH
+             ) 
+# In the context of Gene Set Enrichment Analysis (GSEA), the gene ratio refers to the ratio of the number of genes within a gene set that are differentially expressed or otherwise of interest in your dataset to the total number of genes in that gene set.
+
+View(gse@result)
+# gse_pairwise <- pairwise_termsim(enrichment_TNBC)
+require(DOSE)
+library(enrichplot)
+
+
+# Get the similarity matrix. pairwise_termsim - this function add similarity matrix to the termsim slot of enrichment result
+enriched_terms <- pairwise_termsim(gse)
+View(enriched_terms@result)
+enriched_terms@termsim
+
+#Showing 10 categories as more is unreadable
+GSEA_Dotplot_TOP10 <- dotplot(gse, showCategory = 10, split=".sign",font.size = 10) + facet_grid(.~.sign)
+GSEA_Dotplot_TOP10
+ggsave(file = file.path(PlotsFolder,"GSEA_Dotplot_TOP10.svg"), plot = GSEA_Dotplot_TOP10, 
+       width = 10, height = 8)
+
+
+#Showing 30 categories as it looks good
+# Enrichment Map for enrichment result of over-representation test or gene set enrichment analysis
+GSEA_Emapplot_Top30 <- emapplot(enriched_terms, showCategory = 30, cex_label_category = 0.8)
+GSEA_Emapplot_Top30
+ggsave(file = file.path(PlotsFolder,"GSEA_Emapplot_Top30.svg"), plot = GSEA_Emapplot_Top30, 
+       width = 10, height = 8)
+
+
+
+
+# creare gene list to show LogFC for genes in cnetplot
+original_gene_list <- DEGs$logFC
+names(original_gene_list) <- DEGs$SYMBOL
+original_gene_list
+# omit any NA values 
+gene_list <- na.omit(original_gene_list)
+gene_list = sort(gene_list, decreasing = TRUE)
+length(original_gene_list)
+length(gene_list)
+
+# create new GSEA in Ascending and Descending orders to show top 20 Pos and Neg by NES pathways
+GSE.Arranged.Asc_order <- arrange(gse,NES) # Ascending order
+write.xlsx(GSE.Arranged.Asc_order@result[1:20,], file.path(DataFilesFolder,"GSE.Arranged.Asc_order20.xlsx"))
+
+GSE.Arranged.Desc_order <- arrange(gse,desc(NES)) # Descending scores
+View(GSE.Arranged.Desc_order@result)
+write.xlsx(GSE.Arranged.Desc_order@result[1:20,],
+           file.path(DataFilesFolder,"GSE.Arranged.Desc_order20.xlsx"))
+
+# categorySize can be either 'pvalue' or 'geneNum'. Nice thing, but should be polished
+GSEA_cnetplot_Desc_TOP10 <- cnetplot(GSE.Arranged.Desc_order, categorySize="pvalue", foldChange = gene_list, 
+                                showCategory = 5, # 20
+                                cex_label_category = 0.85,# size for pathways
+                                cex_label_gene = 0.7, # size for genes
+                                shadowtext = "none"                               # cex_gene=0.5
+        # cex_label_gene=0, cex_category=0.5,
+        # cex_gene=0.5, layout = "kk"
+        )
+GSEA_cnetplot_Desc_TOP10
+ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Desc_TOP10.svg"), plot = GSEA_cnetplot_Desc_TOP10, 
+       width = 10, height = 8)
+
+
+GSEA_cnetplot_Asc_TOP10 <- cnetplot(GSE.Arranged.Asc_order, categorySize="pvalue", foldChange = gene_list, 
+                                showCategory = 5, # 20
+                                cex_label_category = 0.72,# size for pathways
+                                cex_label_gene = 0.6, # size for genes
+                                shadowtext = "none" #,
+                                # color_gene = "#B3B3B3",
+                               # cex_gene=0.5
+        # cex_label_gene=0, cex_category=0.5,
+        # cex_gene=0.5, layout = "kk"
+        )
+GSEA_cnetplot_Asc_TOP10
+ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Asc_TOP10.svg"), plot = GSEA_cnetplot_Asc_TOP10, 
+       width = 10, height = 8)
+
+
+# A Ridgeplot can be used to visualize these enrichment scores across multiple gene sets 
+# and conditions simultaneously. Each ridge in the plot represents a gene set, and the width 
+# and height of the ridge represent the density of enrichment scores for that gene set across 
+# different conditions. This visualization allows for the comparison of enrichment patterns across 
+# conditions and helps identify which gene sets are consistently enriched or depleted across 
+# experimental groups.
+ridgeplot <- ridgeplot(gse, core_enrichment = TRUE, label_format = 40, orderBy = "NES",
+          decreasing = TRUE, showCategory = 10) + labs(x = "enrichment distribution")
+ridgeplot
+
+# Use the `Gene Set` param for the index in the title, and as the value for geneSetId
+gseaplot(gse, by = "all", title = gse$Description[1], geneSetID = 1)
+
+terms <- gse$Description[1:20]
+terms_with_TNBC <- paste0(terms, " TNBC")
+# Nice graph, maybe will show what terms are interesting 
+pmcplot(terms_with_TNBC, 2010:2023, proportion=TRUE)
+
+# Upsetplot
+upsetplot(gse)
+
+heatplot(gse, showCategory = 5)
+
+####
+
+```
+
+## GSEA , Gene Set Enrichment Analysis with fgsea
 ```{r}
+library(fgsea)
+
+## Function: Adjacency matrix to list
+matrix_to_list <- function(pws){
+  pws.l <- list() # It initializes an empty list pws.l to store the converted lists.
+  for (pw in colnames(pws)) { # It iterates over each column of the matrix using the colnames() function to get the column names.
+    pws.l[[pw]] <- rownames(pws)[as.logical(pws[, pw])] # For each column, it extracts the row names corresponding to the elements that are TRUE (or non-zero) using the as.logical() function
+  }
+  return(pws.l)
+}
+## Function: prepare_gmt
+
+prepare_gmt <- function(gmt_file, genes_in_data, savefile = FALSE){
+  # for debug
+  #file <- gmt_files[1]
+  #genes_in_data <- df$gene_symbol
+  
+  # Read in gmt file
+  gmt <- gmtPathways(gmt_file) # reading the gmt file into a list
+  hidden <- unique(unlist(gmt)) # find unique pathways and make a list with every gene and corresponding pathway
+  
+  # Convert gmt file to a matrix with the genes as rows and for each go annotation (columns) the values are 0 or 1
+  mat <- matrix(NA, dimnames = list(hidden, names(gmt)), # give names for rows and columns
+                nrow = length(hidden), ncol = length(gmt))
+  for (i in 1:dim(mat)[2]){ # exract number of columns from mat
+    mat[,i] <- as.numeric(hidden %in% gmt[[i]])
+  }
+  
+  #Subset to the genes that are present in our data to avoid bias
+  hidden1 <- intersect(genes_in_data, hidden)
+  mat <- mat[hidden1, colnames(mat)[which(colSums(mat[hidden1,])>5)]] # filter for gene sets with more than 5 genes annotated
+  # And get the list again
+  final_list <- matrix_to_list(mat) # for this we use the function we previously defined
+  
+  if(savefile){
+    saveRDS(final_list, file = paste0(gsub('.gmt', '', gmt_file), '_subset_', format(Sys.time(), '%d%m'), '.RData'))
+  }
+  
+  print('Wohoo! .gmt conversion successfull!:)')
+  return(final_list)
+}
+
+
 ## 1. Read in data
 #df <- read.table("1_2_DEGs.tsv", header = TRUE, sep = "\t")
 
@@ -910,7 +1165,6 @@ df_1_4_7_8 <- DEGs[,c(1,4,7,8)]
 gmt_file <- "BP_subset_GO_Hs.symbols.gmt"
 
 ## 2. Prepare background genes
-
 # Download gene sets .gmt files
 #https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp
 
@@ -922,7 +1176,7 @@ gmt_files <- list.files(path = bg_path,pattern = '.gmt', full.names = TRUE)
 gmt_files
 bg_genes <- prepare_gmt(gmt_files, my_genes, savefile = FALSE)
 #View(bg_genes)
-head(df_1_4_7_8)
+#head(df_1_4_7_8)
 # Prepare your ranked list of genes
 rankings <- sign(df_1_4_7_8$logFC)*(-log10(df_1_4_7_8$P.Value)) # we will use the signed p values from spatial DGE as ranking
 names(rankings) <- df_1_4_7_8$SYMBOL # genes as names
@@ -958,6 +1212,10 @@ GSEAres <- fgsea(pathways = bg_genes, # List of gene sets to check
 
 head(GSEAres)
 View(GSEAres)
+```
+
+
+```{r}
 GSEAres_ordered <- GSEAres[order(padj), ]
 View(GSEAres_ordered)
 
