@@ -113,7 +113,6 @@ library(limma)
 # Crucially, we have to allocate the samples in our dataset to the sample groups of interest. A useful function is model.matrix, which will create a design matrix from one of the columns in your sub_pdata Here I choose sub_pdata$trim_term
 
 fit_mod <- model.matrix(~ 0 + as.factor(sub_pdata$trim_term), data = sub_pdata)
-fit_mod
 ## the column names are a bit ugly, so we will rename 
 colnames(fit_mod) = c('trim1','trim2')
 fit_mod
@@ -131,11 +130,11 @@ contrast.matrix <- makeContrasts(trim2 - trim1 , levels = fit_mod)
 ## e.g. makeContrasts(Group1 - Group2, Group2 - Group3,....levels=design)
 # contrasts.fit() Given a linear model fit to microarray data, compute estimated coefficients and standard errors for a given set of contrasts.
 fit2 <- contrasts.fit(fit = fit, contrasts =contrast.matrix)
-#fit2
+fit2
 
 #Finally, apply the empirical Bayes’ step to get our differential expression statistics and p-values.
 efit <- eBayes(fit2)        # empirical Bayes adjustment
-#View(efit)
+View(efit)
 
 # The topTable function automatically displays the results for the first contrast
 diff_table = topTable(efit, number = nrow(sub_exprs))
@@ -935,7 +934,7 @@ dotplot(enrichres, showCategory = 15) + ggtitle("Up-Down_regulated")
 cnetplot(enrichres)
 cnetplot(enrichres, categorySize="pvalue",foldChange = gene_list, showCategory=8)
 
-goplot(enrichres)
+#goplot(enrichres)
 
 View(enrichres)
 
@@ -966,7 +965,7 @@ library(clusterProfiler)
 ## 1. Read in data
 #df <- read.table("1_2_DEGs.tsv", header = TRUE, sep = "\t")
 
-DEGs <- read_excel("difexp_1-2.xlsx", sheet = "Sheet1")
+DEGs <- read_excel(file.path(DataFilesFolder,"difexp_1-2.xlsx"), sheet = "Sheet1")
 #df <- read.csv(paste0(in_path, 'expression2.csv'), row.names = 1)
 # Remove the first column from the data frame
 DEGs <- DEGs[-1]
@@ -979,19 +978,27 @@ df_1_4_7_8 <- DEGs[,c(1,4,7,8)]
 #my_genes <- df_2_4_7_8$SYMBOL
 
 # Prepare your ranked list of genes
-rankings <- sign(df_1_4_7_8$logFC)*(-log10(df_1_4_7_8$P.Value)) # we will use the signed p values from spatial DGE as ranking
+rankings <- df_1_4_7_8$logFC*(-log10(df_1_4_7_8$adj.P.Val)) # we will use the signed p values from spatial DGE as ranking
 names(rankings) <- df_1_4_7_8$SYMBOL # genes as names
 #View(rankings)
 rankings <- sort(rankings, decreasing = TRUE) # sort genes by ranking
 head(rankings)
 plot(rankings)
+rankings
+# df.rankings
+
+write.table(data.frame(names = names(rankings), values = rankings),
+            file = "rankings.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+write.xlsx(data.frame(names = names(rankings), values = rankings),
+           file.path(DataFilesFolder,"rankings.xlsx"))
+
 
 organism <- "org.Hs.eg.db"
 gse <- gseGO(geneList = rankings,  # rankings_gseGO
              ont ="BP",  # ALL
              keyType = "SYMBOL", 
              nPerm = 10000, 
-             minGSSize = 10, 
+             minGSSize = 20, 
              maxGSSize = 1200, 
              pvalueCutoff = 0.05, 
              verbose = TRUE, 
@@ -1001,6 +1008,17 @@ gse <- gseGO(geneList = rankings,  # rankings_gseGO
 # In the context of Gene Set Enrichment Analysis (GSEA), the gene ratio refers to the ratio of the number of genes within a gene set that are differentially expressed or otherwise of interest in your dataset to the total number of genes in that gene set.
 
 View(gse@result)
+
+gse@result[1,]$core_enrichment
+####
+# check the min logFC and adj.p-value in enrichment core 
+
+####
+
+write.xlsx(gse@result,
+           file.path(DataFilesFolder,"GSEA_All_results.xlsx"))
+
+
 # gse_pairwise <- pairwise_termsim(enrichment_TNBC)
 require(DOSE)
 library(enrichplot)
@@ -1031,7 +1049,7 @@ ggsave(file = file.path(PlotsFolder,"GSEA_Emapplot_Top30.svg"), plot = GSEA_Emap
 # creare gene list to show LogFC for genes in cnetplot
 original_gene_list <- DEGs$logFC
 names(original_gene_list) <- DEGs$SYMBOL
-original_gene_list
+# original_gene_list
 # omit any NA values 
 gene_list <- na.omit(original_gene_list)
 gene_list = sort(gene_list, decreasing = TRUE)
@@ -1049,7 +1067,7 @@ write.xlsx(GSE.Arranged.Desc_order@result[1:20,],
 
 # categorySize can be either 'pvalue' or 'geneNum'. Nice thing, but should be polished
 GSEA_cnetplot_Desc_TOP10 <- cnetplot(GSE.Arranged.Desc_order, categorySize="pvalue", foldChange = gene_list, 
-                                showCategory = 3, # 20
+                                showCategory = 10, # 20
                                 cex_label_category = 0.8,# size for pathways
                                 cex_label_gene = 0.7, # size for genes
                                 shadowtext = "none"                               # cex_gene=0.5
@@ -1057,12 +1075,12 @@ GSEA_cnetplot_Desc_TOP10 <- cnetplot(GSE.Arranged.Desc_order, categorySize="pval
         # cex_gene=0.5, layout = "kk"
         )
 GSEA_cnetplot_Desc_TOP10
-ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Desc_TOP5.svg"), plot = GSEA_cnetplot_Desc_TOP10, 
+ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Desc_TOP10.svg"), plot = GSEA_cnetplot_Desc_TOP10, 
        width = 10, height = 8)
 
 
 GSEA_cnetplot_Asc_TOP10 <- cnetplot(GSE.Arranged.Asc_order, categorySize="pvalue", foldChange = gene_list, 
-                                showCategory = 3, # 20
+                                showCategory = 10, # 20
                                 cex_label_category = 0.72,# size for pathways
                                 cex_label_gene = 0.6, # size for genes
                                 shadowtext = "none" #,
@@ -1073,7 +1091,7 @@ GSEA_cnetplot_Asc_TOP10 <- cnetplot(GSE.Arranged.Asc_order, categorySize="pvalue
         # cex_gene=0.5, layout = "kk"
         )
 GSEA_cnetplot_Asc_TOP10
-ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Asc_TOP5.svg"), plot = GSEA_cnetplot_Asc_TOP10, 
+ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Asc_TOP10.svg"), plot = GSEA_cnetplot_Asc_TOP10, 
        width = 10, height = 8)
 
 
@@ -1081,6 +1099,32 @@ GSEA_cnetplot_TOP10_Pos_Neg = grid.arrange(GSEA_cnetplot_Desc_TOP10,GSEA_cnetplo
 GSEA_cnetplot_TOP10_Pos_Neg
 ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_TOP3_Pos_Neg.svg"), plot = GSEA_cnetplot_TOP10_Pos_Neg, 
        width = 12, height = 10)
+
+id_GO_interest <- c("GO:0042113","GO:0002312","GO:0050864","GO:0048240","GO:0007339","GO:0032543")
+GSE.6TOP_N_P_NES <- gse[gse$ID %in% id_GO_interest,]
+gse[gse$ID %in% id_GO_interest,]
+
+description_interest <- GSE.6TOP_N_P_NES$Description
+
+
+class(gse)
+gse$ID == id_GO_interest
+sum(gse$ID == id_GO_interest)
+GSEA_cnetplot_Asc_TOP10 <- cnetplot(gse, categorySize="pvalue", foldChange = gene_list, 
+                                showCategory = description_interest, # 20
+                                cex_label_category = 0.72,# size for pathways
+                                cex_label_gene = 0.6, # size for genes
+                                shadowtext = "none" #,
+                                # circular = TRUE
+                                # color_gene = "#B3B3B3",
+                               # cex_gene=0.5
+        # cex_label_gene=0, cex_category=0.5,
+        # cex_gene=0.5, layout = "kk"
+        )
+GSEA_cnetplot_Asc_TOP10
+
+ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_TOP3_POS_NEG.svg"), plot = GSEA_cnetplot_Asc_TOP10, 
+       width = 12, height = 8)
 
 
 # A Ridgeplot can be used to visualize these enrichment scores across multiple gene sets 
@@ -1092,9 +1136,14 @@ ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_TOP3_Pos_Neg.svg"), plot = GS
 ridgeplot <- ridgeplot(gse, core_enrichment = TRUE, label_format = 40, orderBy = "NES",
           decreasing = TRUE, showCategory = 10) + labs(x = "enrichment distribution")
 ridgeplot
+ggsave(file = file.path(PlotsFolder,"GSEA_ridgeplot_.svg"), plot = ridgeplot, 
+       width = 12, height = 10)
 
 # Use the `Gene Set` param for the index in the title, and as the value for geneSetId
 gseaplot(gse, by = "all", title = gse$Description[1], geneSetID = 1)
+
+
+
 
 terms <- gse$Description[1:20]
 terms_with_TNBC <- paste0(terms, " TNBC")
@@ -1104,12 +1153,13 @@ pmcplot(terms_with_TNBC, 2010:2023, proportion=TRUE)
 # Upsetplot
 upsetplot(gse)
 
-heatplot(gse, showCategory = 5)
+heatplot(gse, foldChange = gene_list , showCategory = 5)
+treeplot(enriched_terms, showCategory = 30)
 
-
+?treeplot
 goplot(gse,showCategory = 5)
 ####
-
+# plotGOgraph(gse)
 ```
 
 ## GSEA , Gene Set Enrichment Analysis with fgsea
