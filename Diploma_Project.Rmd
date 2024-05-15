@@ -64,7 +64,7 @@ library(dplyr)
 
 summary(sub_exprs)
 # exprs_log2 <- log2(sub_exprs)
-boxplot(sub_exprs,outline=FALSE,las = 2, ) # to make X labes vertical I have to write las = 2
+boxplot(sub_exprs,outline=FALSE,las = 2 ) # to make X labes vertical I have to write las = 2
 
 ### pheatmap for both trimestrs
 # here i want to create df tsampleinfo hat contains trims for sample names to put in as annotation in pheatmap()
@@ -125,7 +125,7 @@ fit
 #medians
 
 # In order to perform the differential analysis, we have to define the contrast that we are interested in. In our case we only have two groups and one contrast of interest. Multiple contrasts can be defined in the makeContrasts function.
-contrast.matrix <- makeContrasts(trim1 - trim2, levels = fit_mod)
+contrast.matrix <- makeContrasts(trim2 - trim1 , levels = fit_mod)
 
 ## can define multiple contrasts
 ## e.g. makeContrasts(Group1 - Group2, Group2 - Group3,....levels=design)
@@ -641,6 +641,7 @@ de_genes <- read_excel(file.path(DataFilesFolder,"difexp_1-2.xlsx"))
 # Remove the first column from the data frame
 de_genes <- de_genes[-1]
 library(ggrepel)
+library(dplyr)
 library(magrittr)
 # View(de_genes)
 # Create new variable for all genes to define whether they are significant or not, and make top 20 DOWN and UP regulated
@@ -665,6 +666,10 @@ filtered_genes <- de_genes %>%
   filter(diffexpressed %in% c("Up-regulated","Down-regulated")) %>%
   arrange(desc(pi_value))
 View(filtered_genes)
+class(filtered_genes)
+class(as.data.frame(filtered_genes))
+sapply(filtered_genes, class)
+slice(as.data.frame(filtered_genes),20)
 # Step of obtaining threshold for now Pi_value to indicate TOP 20 DEGs
 threshold <- filtered_genes %>% slice(20) %>% pull(pi_value)
 View(filtered_genes)
@@ -1044,31 +1049,38 @@ write.xlsx(GSE.Arranged.Desc_order@result[1:20,],
 
 # categorySize can be either 'pvalue' or 'geneNum'. Nice thing, but should be polished
 GSEA_cnetplot_Desc_TOP10 <- cnetplot(GSE.Arranged.Desc_order, categorySize="pvalue", foldChange = gene_list, 
-                                showCategory = 5, # 20
-                                cex_label_category = 0.85,# size for pathways
+                                showCategory = 3, # 20
+                                cex_label_category = 0.8,# size for pathways
                                 cex_label_gene = 0.7, # size for genes
                                 shadowtext = "none"                               # cex_gene=0.5
         # cex_label_gene=0, cex_category=0.5,
         # cex_gene=0.5, layout = "kk"
         )
 GSEA_cnetplot_Desc_TOP10
-ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Desc_TOP10.svg"), plot = GSEA_cnetplot_Desc_TOP10, 
+ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Desc_TOP5.svg"), plot = GSEA_cnetplot_Desc_TOP10, 
        width = 10, height = 8)
 
 
 GSEA_cnetplot_Asc_TOP10 <- cnetplot(GSE.Arranged.Asc_order, categorySize="pvalue", foldChange = gene_list, 
-                                showCategory = 5, # 20
+                                showCategory = 3, # 20
                                 cex_label_category = 0.72,# size for pathways
                                 cex_label_gene = 0.6, # size for genes
                                 shadowtext = "none" #,
+                                # circular = TRUE
                                 # color_gene = "#B3B3B3",
                                # cex_gene=0.5
         # cex_label_gene=0, cex_category=0.5,
         # cex_gene=0.5, layout = "kk"
         )
 GSEA_cnetplot_Asc_TOP10
-ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Asc_TOP10.svg"), plot = GSEA_cnetplot_Asc_TOP10, 
+ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_Asc_TOP5.svg"), plot = GSEA_cnetplot_Asc_TOP10, 
        width = 10, height = 8)
+
+
+GSEA_cnetplot_TOP10_Pos_Neg = grid.arrange(GSEA_cnetplot_Desc_TOP10,GSEA_cnetplot_Asc_TOP10)
+GSEA_cnetplot_TOP10_Pos_Neg
+ggsave(file = file.path(PlotsFolder,"GSEA_cnetplot_TOP3_Pos_Neg.svg"), plot = GSEA_cnetplot_TOP10_Pos_Neg, 
+       width = 12, height = 10)
 
 
 # A Ridgeplot can be used to visualize these enrichment scores across multiple gene sets 
@@ -1094,6 +1106,8 @@ upsetplot(gse)
 
 heatplot(gse, showCategory = 5)
 
+
+goplot(gse,showCategory = 5)
 ####
 
 ```
